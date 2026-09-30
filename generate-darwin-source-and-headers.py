@@ -52,6 +52,9 @@ class ios_simulator_arm64_platform(arm64_platform):
     version_min = '-miphoneos-version-min=7.0'
 
 
+# Unused below: current Xcode SDKs dropped 32-bit iOS device support
+# entirely, so `configure --host=armv7-apple-ios` can no longer find a
+# working C compiler. Every current iOS/iPadOS device is arm64.
 class ios_device_armv7_platform(armv7_platform):
     target = 'armv7-apple-ios'
     directory = 'darwin_ios'
@@ -129,6 +132,25 @@ class watchos_device_arm64_32_platform(arm64_platform):
     sdk = 'watchos'
     arch = 'arm64_32'
     version_min = '-mwatchos-version-min=4.0'
+
+
+# visionOS postdates this script (and this libffi release) upstream, so
+# there is no `-mxros-version-min=` flag to pass - clang takes the minimum
+# version from the target triple itself for this platform instead, same as
+# `xcrun -sdk xros clang -target arm64-apple-xros1.0 ...` outside of
+# configure.
+class visionos_simulator_arm64_platform(arm64_platform):
+    target = 'arm64-apple-xros1.0-simulator'
+    directory = 'darwin_visionos'
+    sdk = 'xrsimulator'
+    version_min = ''
+
+
+class visionos_device_arm64_platform(arm64_platform):
+    target = 'arm64-apple-xros1.0'
+    directory = 'darwin_visionos'
+    sdk = 'xros'
+    version_min = ''
 
 
 def mkdir_p(path):
@@ -220,6 +242,7 @@ def generate_source_and_headers(
     generate_ios=True,
     generate_tvos=True,
     generate_watchos=True,
+    generate_visionos=True,
 ):
     copy_files('src', 'darwin_common/src', pattern='*.c')
     copy_files('include', 'darwin_common/include', pattern='*.h')
@@ -227,7 +250,6 @@ def generate_source_and_headers(
     if generate_ios:
         copy_src_platform_files(ios_simulator_x86_64_platform)
         copy_src_platform_files(ios_simulator_arm64_platform)
-        copy_src_platform_files(ios_device_armv7_platform)
         copy_src_platform_files(ios_device_arm64_platform)
     if generate_osx:
         copy_src_platform_files(desktop_x86_64_platform)
@@ -241,13 +263,15 @@ def generate_source_and_headers(
         copy_src_platform_files(watchos_simulator_arm64_platform)
         copy_src_platform_files(watchos_device_armv7k_platform)
         copy_src_platform_files(watchos_device_arm64_32_platform)
+    if generate_visionos:
+        copy_src_platform_files(visionos_simulator_arm64_platform)
+        copy_src_platform_files(visionos_device_arm64_platform)
 
     platform_headers = collections.defaultdict(set)
 
     if generate_ios:
         build_target(ios_simulator_x86_64_platform, platform_headers)
         build_target(ios_simulator_arm64_platform, platform_headers)
-        build_target(ios_device_armv7_platform, platform_headers)
         build_target(ios_device_arm64_platform, platform_headers)
     if generate_osx:
         build_target(desktop_x86_64_platform, platform_headers)
@@ -261,6 +285,9 @@ def generate_source_and_headers(
         build_target(watchos_simulator_arm64_platform, platform_headers)
         build_target(watchos_device_armv7k_platform, platform_headers)
         build_target(watchos_device_arm64_32_platform, platform_headers)
+    if generate_visionos:
+        build_target(visionos_simulator_arm64_platform, platform_headers)
+        build_target(visionos_device_arm64_platform, platform_headers)
 
     mkdir_p('darwin_common/include')
     for header_name, tag_tuples in platform_headers.items():
@@ -275,11 +302,15 @@ if __name__ == '__main__':
     parser.add_argument('--only-osx', action='store_true', default=False)
     parser.add_argument('--only-tvos', action='store_true', default=False)
     parser.add_argument('--only-watchos', action='store_true', default=False)
+    parser.add_argument('--only-visionos', action='store_true', default=False)
     args = parser.parse_args()
+    only_flags = [args.only_ios, args.only_osx, args.only_tvos, args.only_watchos, args.only_visionos]
+    any_only = any(only_flags)
 
     generate_source_and_headers(
-        generate_osx=not args.only_ios and not args.only_tvos and not args.only_watchos,
-        generate_ios=not args.only_osx and not args.only_tvos and not args.only_watchos,
-        generate_tvos=not args.only_ios and not args.only_osx and not args.only_watchos,
-        generate_watchos=not args.only_ios and not args.only_osx and not args.only_tvos,
+        generate_osx=not any_only or args.only_osx,
+        generate_ios=not any_only or args.only_ios,
+        generate_tvos=not any_only or args.only_tvos,
+        generate_watchos=not any_only or args.only_watchos,
+        generate_visionos=not any_only or args.only_visionos,
     )
